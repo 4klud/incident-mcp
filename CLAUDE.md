@@ -13,8 +13,8 @@ I'm building this to learn how MCP servers work. Do not generate the project for
 - At the end of a session, suggest what I should add to LEARNINGS.md. I write the entry myself.
 
 ## Current status
-Built and tested: `list_services`, `query_metrics`, `query_logs` (Vitest, mocked clients).
-Next: Docker tools (`container_status`, `container_logs`), then `investigate_service`.
+Built and tested: `list_services`, `query_metrics`, `query_logs`, `container_status` (Vitest, mocked clients).
+Next: `container_logs`, then `investigate_service`.
 
 ### Known issues
 - `query_logs` service-label guardrail uses substring matching, so `other_service="x"` passes. Fix by parsing the LogQL stream selector.
