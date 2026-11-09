@@ -34,6 +34,20 @@ services:
     depends_on:
       - loki
 
+  # Read-only Docker API for the MCP server. Only GET on /containers/* is
+  # allowed; POST is off by default and must stay that way.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: docker-socket-proxy
+    restart: on-failure
+    environment:
+      - CONTAINERS=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:2375:2375"
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
