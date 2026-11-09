@@ -7,7 +7,7 @@ services:
       - "9090:9090"
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.1
     container_name: prometheus
     # Explicit command: the receiver flag is needed for Alloy's remote_write.
     command:
@@ -22,13 +22,13 @@ services:
       - demo-app
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.7.9
     container_name: loki
     ports:
       - "3100:3100"
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.21.3
     container_name: alloy
     command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
     # cAdvisor (embedded exporter) needs host cgroup/filesystem visibility.
@@ -59,7 +59,7 @@ services:
       - "127.0.0.1:2375:2375"
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.3.0
     container_name: grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
