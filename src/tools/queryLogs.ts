@@ -1,5 +1,6 @@
 import { z } from "zod";
 import * as loki from "../clients/loki.js";
+import { hasServiceScope } from "../guardrails.js";
 
 const MAX_RANGE_SEC = 6 * 60 * 60;
 const MAX_LIMIT = 500;
@@ -24,7 +25,7 @@ export async function queryLogs(input: QueryLogsInput) {
   if (rangeSec > MAX_RANGE_SEC) {
     throw new Error(`Range too large: ${rangeSec}s exceeds max of ${MAX_RANGE_SEC}s (6h)`);
   }
-  if (!query.includes('service=')) {
+  if (!hasServiceScope(query)) {
     throw new Error('Query must scope to a service label, e.g. {service="demo-app"}');
   }
 

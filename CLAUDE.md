@@ -17,7 +17,7 @@ Built and tested: `list_services`, `query_metrics`, `query_logs`, `container_sta
 Next: `container_logs`, then `investigate_service`.
 
 ### Known issues
-- `query_logs` service-label guardrail uses substring matching, so `other_service="x"` passes. Fix by parsing the LogQL stream selector.
+- `query_metrics` has no service-scoping guardrail (only a description example). `query_logs` now parses LogQL selectors via `src/guardrails.ts`.
 
 ## Architecture
 One MCP server, thin backend clients, higher-level incident tools on top.

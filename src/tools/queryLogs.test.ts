@@ -38,10 +38,16 @@ describe("queryLogs guardrails", () => {
     ).rejects.toThrow(/Query must scope to a service label/);
   });
 
-  it("accepts a query that merely contains 'service=' as a substring (known false-positive gap)", async () => {
+  it("rejects a query whose label merely ends in 'service' (other_service)", async () => {
     await expect(
       queryLogs({ query: '{other_service="x"}', startSec: 0, endSec: 60, limit: 10 })
-    ).resolves.toEqual({ streams: [] });
+    ).rejects.toThrow(/Query must scope to a service label/);
+  });
+
+  it("rejects a regex service matcher that matches every service", async () => {
+    await expect(
+      queryLogs({ query: '{service=~".+"}', startSec: 0, endSec: 60, limit: 10 })
+    ).rejects.toThrow(/Query must scope to a service label/);
   });
 
   it("converts seconds to nanoseconds for the Loki client", async () => {
