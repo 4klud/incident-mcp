@@ -18,7 +18,6 @@ Next: Docker tools (`container_status`, `container_logs`), then `investigate_ser
 
 ### Known issues
 - `query_logs` service-label guardrail uses substring matching, so `other_service="x"` passes. Fix by parsing the LogQL stream selector.
-- cAdvisor series don't yet carry the `service` label (they use `container_label_com_docker_compose_service`), so `list_services` reports metrics only for demo-app.
 
 ## Architecture
 One MCP server, thin backend clients, higher-level incident tools on top.
