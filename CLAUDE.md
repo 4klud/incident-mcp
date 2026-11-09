@@ -42,7 +42,7 @@ Node 20+, TypeScript (strict), `@modelcontextprotocol/sdk`, `zod`, Vitest, Biome
 Lab (`lab/`): Prometheus, Loki, Grafana, Grafana Alloy, cAdvisor, docker-socket-proxy, demo app.
 
 ## Commands
-- Lab up: `docker compose -f lab/compose.yml up -d`
+- Lab up: `docker compose -f lab/docker-compose.yml up -d`
 - Build: `npm run build`
 - Test (single run): `npm test -- --run`
 - Inspect: `npx @modelcontextprotocol/inspector node dist/index.js`
