@@ -50,3 +50,30 @@ CMD ["node", "dist/index.js"]
 
 **what is a vitest coverage for the guardrails, and why are we using it?**
 - 
+
+**project structure**
+
+- dist/ — the compiled JavaScript output of src/, produced by tsc (npm run build). This is what Node actually executes (node dist/index.js) and what claude mcp add points at. It's a build artifact, not source — regenerated every time you build, never hand-edited. Correctly gitignored (confirmed earlier it doesn't show in git status).
+
+- node_modules/ — all installed npm dependencies (@modelcontextprotocol/sdk, zod, express, prom-client, typescript, vitest, etc.) plus their own dependencies, resolved from package.json/package-lock.json. Also gitignored — anyone cloning the repo regenerates it via npm install.
+
+- lab/ — a separate, self-contained thing: the Docker Compose observability stack your MCP server talks to. Its own demo-app/ (a small Express app with failure-simulating endpoints), plus config for prometheus/, alloy/, grafana/. It has its own package.json/tsconfig.json/node_modules inside lab/demo-app/ once built, independent of the root project's. This isn't the MCP server — it's the test environment the MCP server queries (Prometheus on :9091, Loki on :3100) for data to correlate.
+
+So the shape is: src → compiles to → dist (what you run), node_modules is third-party code neither you nor git tracks directly, and lab is the sandboxed "thing being observed" that the server in src/dist reaches out to over HTTP.
+
+## 2026-11-09: Read-only Docker proxy and container metrics with a `service` label
+**Built:** docker-socket-proxy in the lab; moved container metrics from standalone cAdvisor to Alloy's embedded `prometheus.exporter.cadvisor`; removed the standalone cAdvisor service and its Prometheus scrape job.
+**Learned:**
+- docker-socket-proxy enforces read-only at the infrastructure layer: only `CONTAINERS=1` enabled, `POST=0`. GET `/containers/json` returned 200, POST `/containers/demo-app/stop` returned 403. The Docker tools can't mutate anything even if the tool code had a bug.
+- Standalone cAdvisor on Docker Desktop for Mac only produced `id="/docker/<hash>"` series, with no `name` and no compose labels, so the relabel rule for `service` had nothing to match. Alloy's embedded exporter, given `docker_host`, resolves names, images and `container_label_com_docker_compose_service`. Same cAdvisor code, but it talks to the Docker API.
+- In Alloy an exporter component doesn't push anything. The pipeline is `prometheus.exporter.cadvisor` → `prometheus.scrape` → `prometheus.relabel` → `prometheus.remote_write`. The relabel stage is where the compose label becomes `service`, so the join key is still infra-derived.
+- Prometheus only accepts remote write with `--web.enable-remote-write-receiver`. Setting `command:` in compose replaces the image's default flags, so `--config.file` and `--storage.tsdb.path` have to be restated.
+- Alloy's `prometheus.scrape` defaults to a 60s interval. Querying 30s after a restart returned nothing and looked like a broken config; it was just no first scrape yet. Alloy's own metrics (`prometheus_remote_storage_samples_total`) and `/api/v0/web/components/<id>` showed where data was stopping.
+**Got stuck / wrong:**
+- Assumed standalone cAdvisor would work once I added a relabel rule. The labels weren't on the series at all, so no relabel could fix it. Check the raw series labels first.
+- `promtool` said the config file didn't exist in the container: a single-file bind mount goes stale when the host file is rewritten (new inode). A container restart fixed it.
+- After restarting Alloy, Loki rejected replayed old container logs ("entry too far behind"). Noisy but harmless here.
+**Still unclear:**
+- Alloy now runs `privileged: true` and mounts the raw Docker socket. Could `discovery.docker` and the exporter go through docker-socket-proxy instead (probably needs more endpoints enabled)?
+- Whether `list_services` now reports metrics for all services, not just demo-app. Not yet re-tested.
+**Next:** re-test `list_services`, then Docker tools (`container_status`, `container_logs`) against the proxy at 127.0.0.1:2375.

@@ -9,6 +9,11 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    # Explicit command: the receiver flag is needed for Alloy's remote_write.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
@@ -26,9 +31,14 @@ services:
     image: grafana/alloy:latest
     container_name: alloy
     command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    # cAdvisor (embedded exporter) needs host cgroup/filesystem visibility.
+    privileged: true
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
     ports:
       - "12345:12345"
     depends_on:
