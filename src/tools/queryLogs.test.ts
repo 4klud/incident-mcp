@@ -50,6 +50,27 @@ describe("queryLogs guardrails", () => {
     ).rejects.toThrow(/Query must scope to a service label/);
   });
 
+  it("redacts secrets in log lines and stream labels before returning them", async () => {
+    vi.mocked(loki.queryRange).mockResolvedValue([
+      {
+        stream: { service: "demo-app", db_password: "hunter2" },
+        values: [
+          ["1", "connect postgres://admin:s3cret@db/app"],
+          ["2", "GET /health 200"],
+        ],
+      },
+    ]);
+
+    const result = await queryLogs({ query: '{service="demo-app"}', startSec: 0, endSec: 60, limit: 10 });
+
+    expect(result.streams[0].stream).toEqual({ service: "demo-app", db_password: "[REDACTED]" });
+    expect(result.streams[0].values).toEqual([
+      ["1", "connect postgres://admin:[REDACTED]@db/app"],
+      ["2", "GET /health 200"],
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/hunter2|s3cret/);
+  });
+
   it("converts seconds to nanoseconds for the Loki client", async () => {
     await queryLogs({ query: '{service="demo-app"}', startSec: 10, endSec: 70, limit: 5 });
     expect(loki.queryRange).toHaveBeenCalledWith({

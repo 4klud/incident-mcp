@@ -81,6 +81,17 @@ describe("containerStatus output shaping", () => {
     expect(text).not.toContain("Env");
   });
 
+  it("redacts secrets in the free-text error field", async () => {
+    vi.mocked(docker.listContainers).mockResolvedValue([summary("abc")]);
+    vi.mocked(docker.inspectContainer).mockResolvedValue(
+      inspected("abc", { error: "failed to start: DB_PASSWORD=hunter2" }),
+    );
+
+    const result = await containerStatus({ service: "demo-app" });
+
+    expect(result.containers[0].error).toBe("failed to start: DB_PASSWORD=[REDACTED]");
+  });
+
   it("turns Docker's zero timestamp into null for both started and finished", async () => {
     vi.mocked(docker.listContainers).mockResolvedValue([summary("abc")]);
     vi.mocked(docker.inspectContainer).mockResolvedValue(

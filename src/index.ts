@@ -39,7 +39,7 @@ server.registerTool(
 server.registerTool(
   "query_logs",
   {
-    description: "Run a LogQL query against the logs backend. Must scope to a service label. Bounded to a 6h max range and 500 lines.",
+    description: "Run a LogQL query against the logs backend. Must scope to a service label. Bounded to a 6h max range and 500 lines. Secrets in returned lines and labels are redacted on a best-effort basis.",
     inputSchema: queryLogsInputSchema.shape,
     annotations: { readOnlyHint: true },
   },

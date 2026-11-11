@@ -1,6 +1,6 @@
 import { z } from "zod";
 import * as loki from "../clients/loki.js";
-import { hasServiceScope } from "../guardrails.js";
+import { hasServiceScope, redactRecord, redactSecrets } from "../guardrails.js";
 
 const MAX_RANGE_SEC = 6 * 60 * 60;
 const MAX_LIMIT = 500;
@@ -35,5 +35,10 @@ export async function queryLogs(input: QueryLogsInput) {
     endNs: BigInt(endSec) * 1_000_000_000n,
     limit,
   });
-  return { streams };
+  return {
+    streams: streams.map((s) => ({
+      stream: redactRecord(s.stream),
+      values: s.values.map(([timestamp, line]): [string, string] => [timestamp, redactSecrets(line)]),
+    })),
+  };
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import * as docker from "../clients/docker.js";
 import type { DockerContainerInspect } from "../clients/docker.js";
+import { redactSecrets } from "../guardrails.js";
 
 const MAX_CONTAINERS = 10;
 // Docker reports this timestamp for "never happened" (e.g. finishedAt of a running container).
@@ -33,7 +34,8 @@ function shapeContainer(c: DockerContainerInspect) {
     restartCount: c.restartCount,
     oomKilled: c.state.oomKilled,
     exitCode: c.state.exitCode,
-    error: c.state.error || null,
+    // Free text from the Docker daemon: the only non-enumerated string in the output.
+    error: c.state.error ? redactSecrets(c.state.error) : null,
     startedAt: nullIfNever(c.state.startedAt),
     finishedAt: nullIfNever(c.state.finishedAt),
   };
