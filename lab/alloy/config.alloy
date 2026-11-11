@@ -27,9 +27,13 @@ loki.source.docker "demo" {
 // --- Container metrics (cAdvisor embedded in Alloy) ---
 // Uses the Docker API (not just cgroups) so series carry compose labels.
 prometheus.exporter.cadvisor "docker" {
-  docker_host           = "unix:///var/run/docker.sock"
-  docker_only           = true
-  store_container_labels = true
+  docker_host = "unix:///var/run/docker.sock"
+  docker_only = true
+
+  // Only the compose service label becomes a metric label. Converting every
+  // container label produced ~25 mostly-empty labels on each series.
+  store_container_labels       = false
+  allowlisted_container_labels = ["com.docker.compose.service"]
 }
 
 prometheus.scrape "cadvisor" {
@@ -45,6 +49,12 @@ prometheus.relabel "service_label" {
     source_labels = ["container_label_com_docker_compose_service"]
     regex         = "(.+)"
     target_label  = "service"
+  }
+
+  // `service` now carries the value; drop the verbose source label.
+  rule {
+    action = "labeldrop"
+    regex  = "container_label_com_docker_compose_service"
   }
 }
 
