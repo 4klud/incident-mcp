@@ -15,6 +15,7 @@ server.registerTool(
   {
     description: "List known service names visible in Prometheus and/or Loki, with which signal types each has.",
     inputSchema: listServicesInputSchema.shape,
+    annotations: { readOnlyHint: true },
   },
   async (input) => {
     const result = await listServices(input);
@@ -27,6 +28,7 @@ server.registerTool(
   {
     description: "Run a PromQL range query against the metrics backend. Bounded to a 6h max range and 2000 points per series.",
     inputSchema: queryMetricsInputSchema.shape,
+    annotations: { readOnlyHint: true },
   },
   async (input) => {
     const result = await queryMetrics(input);
@@ -39,6 +41,7 @@ server.registerTool(
   {
     description: "Run a LogQL query against the logs backend. Must scope to a service label. Bounded to a 6h max range and 500 lines.",
     inputSchema: queryLogsInputSchema.shape,
+    annotations: { readOnlyHint: true },
   },
   async (input) => {
     const result = await queryLogs(input);
