@@ -108,3 +108,68 @@ export function hasServiceScope(query: string): boolean {
   if (!selectors || selectors.length === 0) return false;
   return selectors.every((body) => splitOutsideStrings(body, ",").some(isExactServiceMatcher));
 }
+
+// --- Secret redaction (best effort) ---
+//
+// Applied to free text before it leaves a tool. It errs toward over-redacting
+// (e.g. token_count=5 is redacted) because a leak costs more than readability.
+// It cannot catch secrets with no marker ("logged in with hunter2"), unusual
+// formats, or the body lines of a multi-line private key (redaction is per string).
+//
+// Every pattern must run in linear time, since log lines can contain attacker-shaped
+// text. An unbounded quantifier that can fail after consuming a long run backtracks
+// and goes quadratic when the trigger repeats (e.g. "passwordpassword..."), so each
+// such quantifier is bounded. The adversarial test in guardrails.test.ts guards this.
+
+export const REDACTED = "[REDACTED]";
+
+const SENSITIVE_KEYWORDS =
+  "password|passwd|passphrase|secret|token|api[_-]?key|authorization|credentials?|private[_-]?key|access[_-]?key|session[_-]?id";
+
+const SENSITIVE_KEY = new RegExp(SENSITIVE_KEYWORDS, "i");
+
+const QUOTED_OR_BARE_VALUE = `"(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|[^\\s"'&;,]+`;
+
+// Order matters: Bearer/Basic first so "Authorization: Bearer abc" doesn't
+// leave abc behind when the key/value rule consumes only "Bearer".
+const REDACTION_RULES: Array<[RegExp, string]> = [
+  // PEM private key blocks, then a bare header as fallback
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]{0,8192}?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED PRIVATE KEY]"],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/g, "[REDACTED PRIVATE KEY]"],
+  // Authorization schemes
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED}`],
+  // key=value, key: value, "key":"value" (key may be part of a longer name, e.g. db_password)
+  [
+    new RegExp(
+      `((?:${SENSITIVE_KEYWORDS})[A-Za-z0-9_.-]{0,64}["']?\\s*[:=]\\s*)(?:(?:Bearer|Basic)\\s+)?(?:${QUOTED_OR_BARE_VALUE})`,
+      "gi",
+    ),
+    `$1${REDACTED}`,
+  ],
+  // Credentials in URLs: scheme://user:pass@host
+  [/(:\/\/[^\s:/@]+:)[^\s@/]+@/g, `$1${REDACTED}@`],
+  // Well-known token shapes (no key name needed)
+  [/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, REDACTED],
+  [/\beyJ[A-Za-z0-9_-]{5,2048}\.[A-Za-z0-9_-]{5,2048}\.[A-Za-z0-9_-]{0,2048}/g, REDACTED],
+  [/\bgh[pousr]_[A-Za-z0-9]{20,}/g, REDACTED],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, REDACTED],
+  [/\bsk-[A-Za-z0-9_-]{20,}/g, REDACTED],
+];
+
+export function redactSecrets(text: string): string {
+  let result = text;
+  for (const [pattern, replacement] of REDACTION_RULES) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+// For label maps (e.g. Loki stream labels): a sensitive key name hides the whole
+// value; otherwise the value is scanned like any other text.
+export function redactRecord(record: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record)) {
+    out[key] = SENSITIVE_KEY.test(key) ? REDACTED : redactSecrets(value);
+  }
+  return out;
+}
