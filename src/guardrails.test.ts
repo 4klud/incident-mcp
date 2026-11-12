@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { extractStreamSelectors, hasServiceScope, redactRecord, redactSecrets } from "./guardrails.js";
+import {
+  extractStreamSelectors,
+  hasPromqlServiceScope,
+  hasServiceScope,
+  redactRecord,
+  redactSecrets,
+} from "./guardrails.js";
 
 describe("hasServiceScope accepts scoped queries", () => {
   it.each([
@@ -61,6 +67,67 @@ describe("extractStreamSelectors", () => {
 
   it("returns null when the query can't be scanned", () => {
     expect(extractStreamSelectors('{a="1"')).toBeNull();
+  });
+});
+
+describe("hasPromqlServiceScope accepts scoped queries", () => {
+  const accepted = [
+    'up{service="demo-app"}',
+    'sum(rate(http_requests_total{service="demo-app"}[1m])) by (status)',
+    'sum by (status) (rate(http_requests_total{service="demo-app",status=~"5.."}[5m]))',
+    'rate(x{service="a"}[5m]) / on(instance) group_left rate(y{service="a"}[5m])',
+    'histogram_quantile(0.95, sum(rate(h_bucket{service="a"}[5m])) by (le))',
+    'x{service="a"} offset 5m',
+    'x{service="a"} > bool 0.5',
+    'x{service="a"} # up',
+    '{__name__="up", service="a"}',
+    'avg_over_time(x{service="a"}[30m:1m])',
+  ];
+  it.each(accepted)("accepts %s", (q) => expect(hasPromqlServiceScope(q)).toBe(true));
+});
+
+describe("hasPromqlServiceScope rejects unscoped or unparseable queries", () => {
+  const rejected = [
+    "up",
+    "",
+    "1 + 1",
+    'up{job="x"}',
+    'up{other_service="a"}',
+    'up{service=~"a|b"}',
+    'up{service=~".+"}',
+    'up{service!="a"}',
+    'up{service=""}',
+    "up{}",
+    'up{service="a"} or up',
+    'up{service="a"} or {job="x"}',
+    "up{service='a'}", // known gap: single-quoted label values are not accepted (fails closed)
+    'sum(rate(a{service="a"}[1m])) / sum(rate(b[1m]))',
+    'x{service="a"} + on(job) group_left y',
+    'x{service="a"} unless y',
+    'sum without (service) (up)',
+    'up{service="a"',
+    'up{service="a}',
+    'up{service="a"}}',
+    'label_replace(up, "service", "a", "job", ".*")',
+    'up{job="service=\"a\""}',
+    '"up{service=\"a\"}"',
+    '# up{service="a"}\nup',
+  ];
+  it.each(rejected)("rejects %s", (q) => expect(hasPromqlServiceScope(q)).toBe(false));
+});
+
+describe("hasPromqlServiceScope speed", () => {
+  it("scans hostile long queries in linear time", () => {
+    const inputs = [
+      "a ".repeat(100_000),
+      "sum ".repeat(50_000),
+      "(".repeat(100_000),
+      'x{service="a"} or '.repeat(20_000) + "up",
+      "by (".repeat(50_000),
+    ];
+    const start = performance.now();
+    for (const q of inputs) hasPromqlServiceScope(q);
+    expect(performance.now() - start).toBeLessThan(500);
   });
 });
 

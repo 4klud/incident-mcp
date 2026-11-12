@@ -109,6 +109,121 @@ export function hasServiceScope(query: string): boolean {
   return selectors.every((body) => splitOutsideStrings(body, ",").some(isExactServiceMatcher));
 }
 
+// --- PromQL service scoping ---
+//
+// Harder than LogQL: a bare metric name (`up`) is already a valid selector with no
+// braces, so a "contains service=" check would let `up or foo{service="a"}` through.
+// Instead we tokenise: every {...} selector must carry service="<name>", and any
+// identifier that is not a function, keyword or label list is treated as a bare
+// metric name and rejected. Anything we can't scan cleanly is rejected (fail closed).
+
+// Followed by a parenthesised list of label names, which are not metrics.
+const PROMQL_LABEL_LIST_KEYWORDS = new Set(["by", "without", "on", "ignoring", "group_left", "group_right"]);
+// Operators and literals that appear as bare words.
+const PROMQL_WORD_OPERATORS = new Set(["offset", "bool", "and", "or", "unless", "atan2", "inf", "nan"]);
+
+const PROMQL_IDENT_START = /[A-Za-z_:]/;
+const PROMQL_IDENT_PART = /[A-Za-z0-9_:]/;
+
+// PromQL allows "..." and '...' (with escapes) and `...` (raw).
+function skipPromString(s: string, start: number): number {
+  const quote = s[start];
+  for (let i = start + 1; i < s.length; i++) {
+    if (quote !== "`" && s[i] === "\\") {
+      i++;
+      continue;
+    }
+    if (s[i] === quote) return i + 1;
+  }
+  return -1;
+}
+
+function skipSpaces(s: string, from: number): number {
+  let i = from;
+  while (i < s.length && /\s/.test(s[i])) i++;
+  return i;
+}
+
+// Index just past the ")" closing a label list that starts at `open`, or -1.
+function skipLabelList(s: string, open: number): number {
+  for (let i = open + 1; i < s.length; i++) {
+    if (s[i] === '"' || s[i] === "'" || s[i] === "`") {
+      const end = skipPromString(s, i);
+      if (end === -1) return -1;
+      i = end - 1;
+    } else if (s[i] === ")") {
+      return i + 1;
+    }
+  }
+  return -1;
+}
+
+const PROMQL_GROUPING = /(?:by|without)\b/iy;
+
+// True if `by` or `without` starts at `from`. Sticky regex: no copy of the rest of the query.
+function startsWithGrouping(s: string, from: number): boolean {
+  PROMQL_GROUPING.lastIndex = from;
+  return PROMQL_GROUPING.test(s);
+}
+
+// True if the query has at least one selector, every {...} selector is scoped to a
+// specific service, and no metric is selected by bare name.
+export function hasPromqlServiceScope(query: string): boolean {
+  let selectorCount = 0;
+  let i = 0;
+  while (i < query.length) {
+    const ch = query[i];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const end = skipPromString(query, i);
+      if (end === -1) return false;
+      i = end;
+    } else if (ch === "#") {
+      const newline = query.indexOf("\n", i);
+      if (newline === -1) break;
+      i = newline + 1;
+    } else if (ch === "[") {
+      const close = query.indexOf("]", i);
+      if (close === -1) return false;
+      i = close + 1;
+    } else if (ch === "{") {
+      const close = findSelectorEnd(query, i + 1);
+      if (close === -1) return false;
+      const body = query.slice(i + 1, close);
+      if (!splitOutsideStrings(body, ",").some(isExactServiceMatcher)) return false;
+      selectorCount++;
+      i = close + 1;
+    } else if (ch === "}") {
+      return false;
+    } else if (/[0-9]/.test(ch)) {
+      // Number or duration (1e3, 0x1F, 5m): skip the whole token.
+      while (i < query.length && /[A-Za-z0-9_.]/.test(query[i])) i++;
+    } else if (PROMQL_IDENT_START.test(ch)) {
+      let end = i + 1;
+      while (end < query.length && PROMQL_IDENT_PART.test(query[end])) end++;
+      const word = query.slice(i, end).toLowerCase();
+      const next = skipSpaces(query, end);
+      if (PROMQL_LABEL_LIST_KEYWORDS.has(word)) {
+        if (query[next] === "(") {
+          const after = skipLabelList(query, next);
+          if (after === -1) return false;
+          i = after;
+        } else {
+          i = end;
+        }
+      } else if (query[next] === "(" || PROMQL_WORD_OPERATORS.has(word) || startsWithGrouping(query, next)) {
+        i = end; // function name, operator, or aggregation written as `sum by (...) (...)`
+      } else if (query[next] === "{") {
+        i = end; // metric name; its selector is checked on the next iteration
+      } else {
+        return false; // bare metric name: unscoped
+      }
+    } else {
+      i++;
+    }
+  }
+  return selectorCount > 0;
+}
+
 // --- Secret redaction (best effort) ---
 //
 // Applied to free text before it leaves a tool. It errs toward over-redacting
