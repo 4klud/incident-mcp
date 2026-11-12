@@ -26,7 +26,8 @@ server.registerTool(
 server.registerTool(
   "query_metrics",
   {
-    description: "Run a PromQL range query against the metrics backend. Bounded to a 6h max range and 2000 points per series.",
+    description:
+      'Run a PromQL range query against the metrics backend. Every metric selector must include a service="<name>" matcher, e.g. sum(rate(http_requests_total{service="demo-app"}[1m])) by (status). Bounded to a 6h max range and 2000 points per series.',
     inputSchema: queryMetricsInputSchema.shape,
     annotations: { readOnlyHint: true },
   },

@@ -1,5 +1,7 @@
 # incident-mcp
 
+[![CI](https://github.com/4klud/incident-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/4klud/incident-mcp/actions/workflows/ci.yml)
+
 A **read-only [Model Context Protocol](https://modelcontextprotocol.io) server** that gives an AI assistant the data it needs to investigate an incident: Prometheus metrics, Loki logs and Docker container state, all joined on one key, the **compose service name**.
 
 It is a learning project and portfolio piece. The interesting part is not the tools themselves but where the safety lives: **in the server, not in the prompt.**
@@ -49,7 +51,7 @@ Layers (`src/`):
 |---|---|
 | `clients/` | Plain HTTP wrappers for Prometheus, Loki and Docker. No MCP knowledge, easy to mock. |
 | `tools/` | MCP tool definitions: Zod input schemas, guardrails, output shaping. |
-| `guardrails.ts` | Shared guardrails: LogQL service-scope check and secret redaction. |
+| `guardrails.ts` | Shared guardrails: LogQL and PromQL service-scope checks, and secret redaction. |
 | `config.ts` | Backend URLs from environment variables. |
 | `index.ts` | Registers the tools and starts the stdio transport. |
 
@@ -60,7 +62,7 @@ All four tools are read-only and carry `readOnlyHint: true`.
 | Tool | Returns | Limits |
 |---|---|---|
 | `list_services` | Service names visible in Prometheus and/or Loki, and which signals each has | none needed |
-| `query_metrics` | A PromQL range query result | 6 h max range, 5 s min step, 2000 points per series |
+| `query_metrics` | A PromQL range query result | 6 h max range, 5 s min step, 2000 points per series, **every selector must be scoped to a service** |
 | `query_logs` | A LogQL range query result; secrets redacted | 6 h max range, 500 lines, **query must be scoped to a service** |
 | `container_status` | State, health, restart count, OOM-killed flag, exit code and start/finish times for a service's containers, including stopped ones | 10 containers per service, allowlisted fields only |
 
@@ -69,7 +71,7 @@ All four tools are read-only and carry `readOnlyHint: true`.
 These are enforced in code and covered by unit tests. They do not depend on the model behaving.
 
 - **Bounded queries.** Time range, step and result size are capped before a request is sent.
-- **Mandatory service scoping for logs.** `query_logs` parses the LogQL stream selectors (it does not just search for the text `service=`). *Every* selector must contain `service="<name>"` with a plain `=`. `{other_service="x"}`, `{service=~".+"}`, `{service=""}`, a scoped selector hidden in a comment, or one scoped plus one unscoped selector are all rejected. Anything it can't parse is rejected too (fail closed).
+- **Mandatory service scoping for logs and metrics.** `query_logs` parses the LogQL stream selectors (it does not just search for the text `service=`). *Every* selector must contain `service="<name>"` with a plain `=`. `{other_service="x"}`, `{service=~".+"}`, `{service=""}`, a scoped selector hidden in a comment, or one scoped plus one unscoped selector are all rejected. Anything it can't parse is rejected too (fail closed). `query_metrics` applies the same rule to PromQL, where it also has to reject bare metric names (`up`, `rate(x[1m])`), since PromQL needs no braces to select a metric.
 - **Allowlisted output.** `container_status` builds its result field by field. The container's environment variables are never copied, so they cannot leak.
 - **Secret redaction.** Log lines, log labels and the container error text pass through `redactSecrets`: `password=…`, `token=…`, `Authorization: Bearer …`, credentials in URLs, AWS keys, JWTs, GitHub/Slack/`sk-` tokens and private-key blocks. Patterns are length-bounded so a hostile 200 KB log line cannot make them backtrack, and a test checks that.
 - **Read-only Docker access.** The server never touches the raw Docker socket. It talks to [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) with only `CONTAINERS=1`, so writes are refused: a `POST` to stop a container returns `403`. (`readOnlyHint` is only a hint to clients; the proxy is the actual guarantee.)
@@ -79,7 +81,7 @@ These are enforced in code and covered by unit tests. They do not depend on the 
 Worth knowing, and worth being honest about:
 
 - **Redaction is best-effort, not data-loss prevention.** It cannot catch a secret with no marker ("logged in with hunter2"), unusual formats, or the body lines of a multi-line private key when they arrive as separate log lines. It errs toward over-redacting (`tokens_used=5` becomes `tokens_used=[REDACTED]`). These cases are pinned down as tests.
-- **`query_metrics` has no service-scoping check.** It has range and size caps, but a PromQL query is not required to name a service.
+- **The PromQL scope check is a token scanner, not a full parser.** It fails closed, so some valid queries are rejected, e.g. single-quoted label values (`service='a'`). That gap is pinned as a test.
 - **stdio transport only**, and no authentication. It is meant to run locally next to the client.
 - **Lab only:** Grafana runs with anonymous admin, and Alloy runs `privileged` with the Docker socket mounted. Don't copy those settings anywhere real.
 

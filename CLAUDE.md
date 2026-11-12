@@ -14,18 +14,19 @@ I'm building this to learn how MCP servers work. Do not generate the project for
 
 ## Current status
 Built and tested: `list_services`, `query_metrics`, `query_logs`, `container_status` (Vitest, mocked clients).
+`query_logs` and `query_metrics` both require a service-scoped query (parsed, fail closed).
 Secret redaction is applied to `query_logs` output and the `container_status` error field. `container_logs` was dropped (Loki already holds container logs).
 Next: README polish; `investigate_service` (or a triage prompt) is optional.
 
 ### Known issues
-- `query_metrics` has no service-scoping guardrail (only a description example). `query_logs` now parses LogQL selectors via `src/guardrails.ts`.
+- The PromQL scope check (`hasPromqlServiceScope`) is a token scanner, not a full parser. It fails closed, so it rejects some valid queries (e.g. single-quoted label values).
 
 ## Architecture
 One MCP server, thin backend clients, higher-level incident tools on top.
 
 - `src/clients/`: plain HTTP/Docker wrappers. No MCP knowledge. Easy to mock in tests.
 - `src/tools/`: MCP tool definitions. Zod input schemas, guardrails, output shaping.
-- `src/guardrails.ts`: shared guardrails: LogQL service-scope check (`hasServiceScope`) and best-effort secret redaction (`redactSecrets`, `redactRecord`). The time-range (6h), point-count (2000), line and container caps live inline in each tool.
+- `src/guardrails.ts`: shared guardrails: LogQL and PromQL service-scope checks (`hasServiceScope`, `hasPromqlServiceScope`) and best-effort secret redaction (`redactSecrets`, `redactRecord`). The time-range (6h), point-count (2000), line and container caps live inline in each tool.
 - `src/prompts/` and `src/resources/`: triage prompt and runbooks (later).
 - Transport: stdio for local dev; Streamable HTTP later.
 
