@@ -1,7 +1,5 @@
 # Demo guide
 
-A five-minute walkthrough of incident-mcp, plus how to use the lab's web UIs and a query cheat sheet.
-
 ## 1. Setup (once)
 
 ```bash
@@ -28,22 +26,23 @@ The demo app (http://localhost:9090) is an API, not a web page. `GET /` returns 
 | `/ok` | Healthy response |
 | `/slow?ms=300` | Responds after a delay |
 | `/error?rate=1` | Returns 500s (`rate` is the probability, 1 = always) |
-| `/cpu` | Burns CPU |
-| `/crash` | Kills the process; Docker restarts the container |
+| `/cpu?ms=500` | Burns CPU for `ms` milliseconds |
+| `/crash` | Returns 200, then kills the process; Docker restarts the container. No 500 is logged, so only `container_status` shows it |
 | `/metrics` | Prometheus metrics |
 
 ## 2. The demo (about 5 minutes)
 
-1. **Pitch (20 s).** A read-only MCP server that lets an AI assistant investigate an incident from metrics, logs and container state. The safety rules live in the server, not the prompt.
-2. **Architecture (30 s).** Show the README diagram: the guardrail box and the GET-only docker-socket-proxy.
-3. **Cause an incident (30 s).**
+1. **Cause an incident (30 s).**
    ```bash
-   for i in $(seq 1 20); do curl -s "localhost:9090/error?rate=1" >/dev/null; curl -s "localhost:9090/slow?ms=300" >/dev/null; done
+   for i in $(seq 1 20); do
+     curl -s "localhost:9090/error?rate=1" >/dev/null
+     curl -s "localhost:9090/slow?ms=300" >/dev/null
+   done
    curl -s localhost:9090/crash
    ```
    Wait about 60 seconds. Alloy scrapes container metrics every 60 s, so a query straight after a restart can be empty.
-4. **Let the assistant investigate (2 min).** Ask Claude Code: *"demo-app looks unhealthy. What's going on?"* Expect `list_services`, then `container_status` (`restartCount` is up), then `query_logs` (the 500s) and `query_metrics` (request rate by status). Narrate each call: one question, three data sources, joined on the `service` label.
-5. **Break a guardrail on purpose (1 min).** Ask it to run:
+2. **Let the assistant investigate (2 min).** Ask Claude Code: *"demo-app looks unhealthy. What's going on?"* Expect `list_services`, then `container_status` (`restartCount` is up), then `query_logs` (the 500s) and `query_metrics` (request rate by status). Narrate each call: one question, three data sources, joined on the `service` label.
+3. **Break a guardrail on purpose (1 min).** Ask it to run:
    - `query_logs` with `{other_service="x"}`
    - `query_metrics` with `up`
    - `query_metrics` over the last 24 hours
@@ -53,7 +52,7 @@ The demo app (http://localhost:9090) is an API, not a web page. `GET /` returns 
    curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:2375/containers/json                    # 200
    curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:2375/containers/demo-app/stop   # 403
    ```
-6. **Optional, no LLM:** `npx @modelcontextprotocol/inspector node dist/index.js`, then call each tool by hand under Tools.
+4. **Optional, no LLM:** `npx @modelcontextprotocol/inspector node dist/index.js`, then call each tool by hand under Tools.
 
 ## 3. Using the UIs
 
@@ -119,7 +118,7 @@ Not allowed through the MCP server (but fine in the Prometheus UI, which makes a
 {service="loki"} |= "error"
 ```
 
-Metric-style LogQL (works in Grafana Explore; I haven't confirmed `query_logs` formats these):
+Metric-style LogQL (these work in Grafana Explore; `query_logs` is built for log lines and may not format metric results):
 
 ```logql
 count_over_time({service="demo-app"}[5m])
