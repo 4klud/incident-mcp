@@ -77,3 +77,24 @@ So the shape is: src → compiles to → dist (what you run), node_modules is th
 - Alloy now runs `privileged: true` and mounts the raw Docker socket. Could `discovery.docker` and the exporter go through docker-socket-proxy instead (probably needs more endpoints enabled)?
 - Whether `list_services` now reports metrics for all services, not just demo-app. Not yet re-tested.
 **Next:** re-test `list_services`, then Docker tools (`container_status`, `container_logs`) against the proxy at 127.0.0.1:2375.
+## 2026-11-12: container_status, parsed scoping for logs and metrics, redaction, CI
+**Built:** `container_status` (through docker-socket-proxy), `hasServiceScope` for LogQL and `hasPromqlServiceScope` for PromQL, `redactSecrets` / `redactRecord`, `readOnlyHint` on all four tools, a README, and a GitHub Actions workflow (build + test).
+**Learned:**
+- The earlier "`query.includes('service=')` is too naive" worry was right. `{other_service="x"}` passed it. The fix is to parse the selectors: every `{...}` must contain `service="<non-empty>"` with a plain `=`. Skip strings and comments, and reject anything that can't be parsed (fail closed). A guardrail that fails open is worse than none, because it looks like protection.
+- PromQL is harder than LogQL because a bare metric name (`up`) is already a selector with no braces, so a text search for `service=` lets `up or foo{service="a"}` through. The scanner has to reject bare identifiers while skipping function names, `by (...)` label lists, `[5m]` ranges, strings and numbers.
+- Build the tool output from an allowlist (field by field) instead of copying the Docker object and deleting what's sensitive. The container's `Env` can't leak if no code path copies it. Tests check that a planted secret in `Env` never appears.
+- `Promise.allSettled` over per-container inspections means one failed inspect doesn't hide the others. The result reports `inspectFailed` instead of silently dropping them.
+- Raw compose output is noisy for an LLM reader. ~25 mostly-empty container labels per series became 6 once `store_container_labels = false` plus an allowlist was set. Fewer, meaningful fields are cheaper and easier to reason about.
+- `readOnlyHint` is only a hint to the client. The real guarantee is the proxy's 403 on writes.
+- Docker returns `0001-01-01T00:00:00Z` for "never", so it has to be mapped to `null` or the model reads it as a real date. Live crash and OOM checks gave `exit 3, restartCount 2` and `exit 137, oomKilled true`.
+**Got stuck / wrong:**
+- Regex redaction went quadratic. `password` repeated 100k times, or repeated PEM headers or JWT prefixes, took seconds because an unbounded quantifier can fail after consuming a long run and then retry from every later start. Bounding each quantifier (`{0,64}`, `{5,2048}`) fixed it. I only found it because I wrote an adversarial speed test. It wasn't a case I'd have thought of by reading the code.
+- My first live redaction check proved nothing: demo-app never logs query strings, so there was nothing to redact. The real check needed a throwaway container that actually printed secrets.
+- First PromQL scanner rejected `sum by (status) (...)` (it saw `sum` followed by `by` and took it for a metric name), and copied the rest of the query for every word, which is quadratic on long input. Both were caught by tests, the second by the speed test.
+- Staged the wrong hunk with a zero-context patch (the proxy block landed at the end of the compose file). The leftover diff showing 11 deletions gave it away. I fixed it by building the index entry explicitly and checking with `docker compose config`.
+- Pinned images are committed, but the running loki / prometheus / grafana containers still use the old `:latest` ones because I didn't recreate them (data loss risk).
+**Still unclear:**
+- Redaction can't catch a secret with no marker ("logged in with hunter2"). Is there a better answer than best-effort, or is documenting the limit the right call?
+- The PromQL scanner is not a real parser. Would the Prometheus parser, or a WASM build, be worth the dependency, or does fail-closed cover it?
+- Could Alloy use the proxy instead of a privileged container with the raw socket?
+**Next:** optional only: `investigate_service` or a triage prompt. Otherwise the project is demo-ready.

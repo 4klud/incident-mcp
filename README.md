@@ -22,7 +22,7 @@ flowchart LR
     subgraph guard["Guardrails in the server"]
         direction TB
         g1["range / size caps"]
-        g2["LogQL service scoping"]
+        g2["service scoping<br/>(LogQL + PromQL)"]
         g3["secret redaction"]
         g4["allowlisted output"]
     end
@@ -139,7 +139,7 @@ npm test -- --run     # Vitest; clients are mocked
 npm run build         # tsc → dist/
 ```
 
-Unit tests mock the backend clients, so they run without the lab. The guardrail tests cover the LogQL scanner (good and bad queries, fail-closed cases), every redaction rule, idempotence, the known gaps, and adversarial inputs for regex backtracking.
+Unit tests mock the backend clients, so they run without the lab. The guardrail tests cover the LogQL and PromQL scanners (good and bad queries, fail-closed cases), every redaction rule, idempotence, the known gaps, and adversarial inputs for regex backtracking.
 
 ## Notes from building it
 
