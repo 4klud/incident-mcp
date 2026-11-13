@@ -116,7 +116,7 @@ Lab ports: demo app `9090`, Prometheus `9091`, Loki `3100`, Grafana `3000`, Allo
 
 ## Two-minute demo
 
-The demo app has built-in fault injection (`/error`, `/slow`, `/cpu`, `/crash`). With the lab running and the server registered (or the Inspector open):
+The demo app is an API with no web page (`GET /` returns "Cannot GET /", which is expected). It has `/ok`, `/metrics` and built-in fault injection (`/error`, `/slow`, `/cpu`, `/crash`). With the lab running and the server registered (or the Inspector open):
 
 ```bash
 # Generate some trouble
@@ -131,6 +131,8 @@ Then, in the Inspector or by asking an assistant:
 3. `query_logs` with `{service="demo-app"} | json | status="500"`: the simulated errors.
 4. `query_metrics` with `sum(rate(http_requests_total{service="demo-app"}[1m])) by (status)`: the request rate by status code.
 5. Try to break a guardrail: `query_logs` with `{other_service="x"}`, or a range longer than 6 hours. Both are rejected with a clear error.
+
+A longer walkthrough, with a query cheat sheet and how to use the Prometheus, Alloy and Grafana UIs, is in [DEMO.md](DEMO.md).
 
 ## Development
 
