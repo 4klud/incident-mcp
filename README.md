@@ -17,7 +17,7 @@ Assistant: "demo-app looks unhealthy. What's going on?"
 
 ```mermaid
 flowchart LR
-    client["MCP client<br/>(Claude Code, Inspector)"] -- stdio --> server["incident-mcp<br/>(Node + TypeScript)"]
+    client["MCP client<br/>(Claude Code, Inspector)"] -- stdio --> server["incident-mcp<br/>(Node + TypeScript)<br/>list_services, query_metrics,<br/>query_logs, container_status"]
 
     subgraph guard["Guardrails in the server"]
         direction TB
@@ -28,19 +28,22 @@ flowchart LR
     end
     server --- guard
 
-    server -- HTTP --> prom[(Prometheus)]
-    server -- HTTP --> loki[(Loki)]
-    server -- "HTTP, GET only" --> proxy["docker-socket-proxy"]
-    proxy --> sock["Docker socket"]
+    server -- "query_metrics, list_services" --> prom[(Prometheus)]
+    server -- "query_logs, list_services" --> loki[(Loki)]
+    server -- "container_status<br/>HTTP, GET only" --> proxy["docker-socket-proxy"]
 
     subgraph lab["Docker Compose lab"]
         app["demo-app<br/>(fault injection)"] -- scrape --> prom
-        alloy["Grafana Alloy<br/>+ embedded cAdvisor"] -- remote write --> prom
-        alloy -- logs --> loki
-        sock -.-> alloy
+        alloy["Grafana Alloy + embedded cAdvisor<br/>adds the service label"] -- "container metrics<br/>(remote write)" --> prom
+        alloy -- "container logs" --> loki
         graf["Grafana"] --> prom
         graf --> loki
+        proxy
     end
+
+    sock["Host Docker socket"]
+    proxy -- "reads, writes refused (403)" --> sock
+    sock -. "raw socket, lab only" .-> alloy
 ```
 
 **Join key.** The `service` label is derived from Docker's own `com.docker.compose.service` label inside Alloy and Prometheus relabeling. Apps never self-report it, so it can't drift or be spoofed by application code.
