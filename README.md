@@ -44,7 +44,13 @@ flowchart LR
     sock["Host Docker socket"]
     proxy -- "reads, writes refused (403)" --> sock
     sock -. "raw socket, lab only" .-> alloy
+
+    %% Edge 11 is the raw-socket arrow: make it visibly dashed and red.
+    linkStyle 11 stroke:#d33,stroke-width:2px,stroke-dasharray:6 4
+    style alloy stroke:#d33,stroke-width:2px,stroke-dasharray:6 4
 ```
+
+The client can be an AI assistant such as Claude Code, or the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), a browser-based test page that lets you call the tools by hand with no AI involved. Red dashed: the only component with raw Docker socket access, and only in the lab. The server itself never gets it.
 
 **Join key.** The `service` label is derived from Docker's own `com.docker.compose.service` label inside Alloy and Prometheus relabeling. Apps never self-report it, so it can't drift or be spoofed by application code.
 
