@@ -53,6 +53,6 @@ Lab (`lab/`): Prometheus, Loki, Grafana, Grafana Alloy (its embedded cAdvisor ex
 
 ## Conventions
 - Small commits, imperative messages ("Add container_status tool").
-- Unit tests mock the clients; integration tests run against the lab stack.
+- Unit tests mock the clients. There are no integration tests yet; the lab stack is used for manual end-to-end checks and demos.
 - Tool descriptions are written for an LLM reader: what it returns, its limits, when to use it, and example queries using the `service` label.
 - Record known gaps as tests or issues, not silent passes.
