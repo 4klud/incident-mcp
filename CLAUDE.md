@@ -16,6 +16,7 @@ I'm building this to learn how MCP servers work. Do not generate the project for
 Built and tested: `list_services`, `query_metrics`, `query_logs`, `container_status` (Vitest, mocked clients).
 `query_logs` and `query_metrics` both require a service-scoped query (parsed, fail closed).
 Secret redaction is applied to `query_logs` output and the `container_status` error field. `container_logs` was dropped (Loki already holds container logs).
+Not built yet: log dedupe into patterns with counts, and series downsampling. Tools currently only cap range, points and lines (rejecting oversized requests) and do not emit a truncation flag, so the "compact summaries" rule below is a goal, not current behavior.
 Next: README polish; `investigate_service` (or a triage prompt) is optional.
 
 ### Known issues
