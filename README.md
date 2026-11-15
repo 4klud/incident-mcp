@@ -91,6 +91,7 @@ Worth knowing, and worth being honest about:
 
 - **Redaction is best-effort, not data-loss prevention.** It cannot catch a secret with no marker ("logged in with hunter2"), unusual formats, or the body lines of a multi-line private key when they arrive as separate log lines. It errs toward over-redacting (`tokens_used=5` becomes `tokens_used=[REDACTED]`). These cases are pinned down as tests.
 - **The PromQL scope check is a token scanner, not a full parser.** It fails closed, so some valid queries are rejected, e.g. single-quoted label values (`service='a'`). That gap is pinned as a test.
+- **No log dedupe or series downsampling yet.** Output is bounded by rejecting oversized requests (range, points, lines), not by summarizing it. Logs are returned line by line rather than grouped into patterns with counts, series are not downsampled, and results carry no truncation flag.
 - **stdio transport only**, and no authentication. It is meant to run locally next to the client.
 - **Lab only:** Grafana runs with anonymous admin, and Alloy runs `privileged` with the Docker socket mounted. Don't copy those settings anywhere real.
 
