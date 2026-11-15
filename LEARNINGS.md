@@ -138,3 +138,26 @@ So the shape is: src → compiles to → dist (what you run), node_modules is th
 - Whether Vitest coverage is worth wiring into CI. It's explained in the 2026-11-07 entry, but it isn't set up.
 - Whether metric-style LogQL (`count_over_time`) works through `query_logs`, which is built for log lines.
 **Next:** optional: Node 20 + 22 matrix in CI, `npm audit` in CI, `THREAT_MODEL.md`, a prompt-injection note on log output, audit logging of tool calls.
+
+## 2026-11-15: Auditing claims against code
+**Built:** no new code. Wrote a resume summary of the project, checked it against the README, tests and source, and corrected CLAUDE.md status and the README limitations (commits `24a9733`, `ca05566`).
+**Learned:**
+- Read-only through the proxy is not the same as safe. The proxy narrows what the server can do, but each endpoint it enables can still expose data:
+
+| | GET-only socket proxy | Raw Docker socket |
+|---|---|---|
+| Methods | GET and HEAD; writes get HTTP 403 | GET, POST, PUT, DELETE |
+| Create, start or exec containers | Blocked | Trivial (can start a privileged container mounting `/`) |
+| Endpoints | Only those explicitly enabled (this project: `CONTAINERS=1`) | All, including secrets and configs |
+| Data exposure | Still readable: `GET /containers/{id}/json` returns `Env` | Everything |
+
+- That `Env` exposure is why `container_status` builds its output field by field from an allowlist instead of copying the Docker object.
+- CLAUDE.md rules describe the project I'm aiming for, not what exists. The rule "return compact summaries" is not implemented: there is no log dedupe, no downsampling and no truncation flag. The tools reject oversized requests and cap the line count.
+- Test results are the source of truth for claims: 157 Vitest tests across 5 files, all unit tests with mocked clients.
+**Got stuck / wrong:**
+- I let a draft resume summary claim dedupe, downsampling and integration tests. I took them from CLAUDE.md without checking the code. A grep for dedupe, downsampling and truncation in the tool source found nothing.
+- There are no integration tests, only unit tests with mocked clients. CLAUDE.md Conventions still says integration tests run against the lab, which is wrong.
+**Resolved from earlier entries:** none.
+**Still unclear:**
+- Which enabled proxy endpoints leak sensitive data (like `Env` via container inspect), and how do I audit that each time I turn one on?
+**Next:** log dedupe, series downsampling and a truncation flag. Fix the integration-test line in CLAUDE.md.
